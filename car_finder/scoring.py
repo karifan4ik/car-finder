@@ -62,8 +62,29 @@ def price_comparison(car: dict, pool: list) -> dict:
     }
 
 
+def accident_flag(car: dict, price_info: dict) -> str:
+    """Определяет, что писать про риск аварии/salvage.
+
+    Auto.dev иногда отдаёт историю машины напрямую (history.accidents) —
+    это надёжнее, чем догадка по цене, и используется в первую очередь.
+    Если истории нет — остаётся резервная догадка по заниженной цене.
+
+    Возвращает одно из: "confirmed" (авария есть в истории), "clean"
+    (по истории аварий нет), "suspected" (истории нет, но цена подозрительно
+    низкая), "unknown" (сигналов нет, ничего не пишем).
+    """
+    accidents = car.get("accidents")
+    if accidents is True:
+        return "confirmed"
+    if accidents is False:
+        return "clean"
+    if price_info.get("cheap_flag"):
+        return "suspected"
+    return "unknown"
+
+
 def rental_heuristic(car: dict, matched_trim: Optional[str]) -> bool:
-    """Грубая эвристика "похоже на бывшую прокатную машину"."""
+    """Грубая эвристика "похоже на бывшую прокатную/перекупную машину"."""
     from datetime import date
 
     age_years = max(date.today().year - car["year"], 1)
@@ -72,25 +93,25 @@ def rental_heuristic(car: dict, matched_trim: Optional[str]) -> bool:
     base_trim = matched_trim is None
     high_mileage = mileage_per_year >= config.RENTAL_MILEAGE_PER_YEAR
 
-    text = " ".join([
-        car.get("description") or "",
-        car.get("dealer_name") or "",
-    ]).lower()
-    keyword_hit = any(kw in text for kw in config.RENTAL_DESCRIPTION_KEYWORDS + config.RENTAL_DEALER_KEYWORDS)
+    owner_count = car.get("owner_count")
+    many_owners = owner_count is not None and owner_count >= config.RENTAL_OWNER_COUNT_THRESHOLD
 
-    return keyword_hit or (base_trim and high_mileage)
+    text = (car.get("dealer_name") or "").lower()
+    keyword_hit = any(kw in text for kw in config.RENTAL_DEALER_KEYWORDS)
+
+    return keyword_hit or many_owners or (base_trim and high_mileage)
 
 
-def score_car(car: dict, matched_trim: Optional[str], price_info: dict, feedback_bonus: int) -> float:
+def score_car(car: dict, matched_trim: Optional[str], price_info: dict, accident_status: str, feedback_bonus: int) -> float:
     """Считает итоговый балл для сортировки — чем больше, тем выше в списке."""
     score = 0.0
     if matched_trim:
         score += 10
-    if price_info.get("cheap_flag"):
-        # Дешевле похожих — не обязательно плохо для покупателя, но рискованно,
-        # поэтому не поднимаем балл сильно, просто помечаем в сообщении.
-        score += 1
+    if accident_status == "confirmed":
+        score -= 5  # известная авария — опускаем вниз, но не скрываем совсем
+    elif accident_status == "suspected":
+        score += 1  # неясно, но подозрительно дёшево — просто помечаем в сообщении
     elif price_info.get("delta") is not None and price_info["delta"] < 0:
-        score += 3  # дешевле похожих, но без признаков риска — хороший вариант
+        score += 3  # дешевле похожих, без признаков риска — хороший вариант
     score += feedback_bonus * 2
     return score

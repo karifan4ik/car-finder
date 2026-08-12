@@ -6,7 +6,7 @@ import logging
 import sys
 
 from . import config, feedback, scoring, storage, telegram_bot
-from .auto_dev_client import AutoDevError, search_cars
+from .auto_dev_client import AutoDevError, fetch_photos, search_cars
 
 logging.basicConfig(
     level=logging.INFO,
@@ -15,7 +15,7 @@ logging.basicConfig(
 logger = logging.getLogger("car_finder.main")
 
 
-def format_caption(car: dict, matched_trim, price_info: dict, is_rental_suspect: bool) -> str:
+def format_caption(car: dict, matched_trim, price_info: dict, accident_status: str, is_rental_suspect: bool) -> str:
     lines = []
     trim_part = f" {car['trim']}" if car["trim"] else ""
     lines.append(f"{car['year']} {car['make']} {car['model']}{trim_part}")
@@ -31,28 +31,25 @@ def format_caption(car: dict, matched_trim, price_info: dict, is_rental_suspect:
 
     if car["url"]:
         lines.append(car["url"])
-
-    if car["description"]:
-        desc_lines = [s.strip() for s in car["description"].replace("\n", ". ").split(".") if s.strip()]
-        snippet = ". ".join(desc_lines[:3])
-        if snippet:
-            lines.append("")
-            lines.append(snippet[:400])
+    if car["carfax_url"]:
+        lines.append(f"Carfax: {car['carfax_url']}")
 
     notes = []
-    if price_info.get("avg_price") is not None:
-        delta = price_info["delta"]
-        if price_info.get("cheap_flag"):
-            notes.append(
-                f"⚠️ Дешевле похожих на ${abs(delta):,} — проверить историю (возможна авария/salvage)."
-            )
-        elif delta < 0:
+    delta = price_info.get("delta")
+    if accident_status == "confirmed":
+        notes.append("⚠️ В истории машины числится авария (данные Auto.dev).")
+    elif accident_status == "suspected":
+        notes.append(
+            f"⚠️ Дешевле похожих на ${abs(delta):,} — проверить историю (возможна авария/salvage)."
+        )
+    elif delta is not None:
+        if delta < 0:
             notes.append(f"Дешевле похожих на ${abs(delta):,}.")
         elif delta > 0:
             notes.append(f"Дороже похожих на ${delta:,}.")
 
     if is_rental_suspect:
-        notes.append("⚠️ Похоже на бывшую прокатную/перекупную машину — базовая комплектация и/или большой пробег для года.")
+        notes.append("⚠️ Похоже на бывшую прокатную/перекупную машину — базовая комплектация, большой пробег для года и/или много владельцев.")
 
     if notes:
         lines.append("")
@@ -95,14 +92,16 @@ def run():
                 continue
 
             price_info = scoring.price_comparison(car, pool)
+            accident_status = scoring.accident_flag(car, price_info)
             is_rental_suspect = scoring.rental_heuristic(car, matched_trim)
             bonus = feedback.get_feedback_bonus(car, prefs)
-            score = scoring.score_car(car, matched_trim, price_info, bonus)
+            score = scoring.score_car(car, matched_trim, price_info, accident_status, bonus)
 
             candidates.append({
                 "car": car,
                 "matched_trim": matched_trim,
                 "price_info": price_info,
+                "accident_status": accident_status,
                 "is_rental_suspect": is_rental_suspect,
                 "price_changed": price_changed,
                 "old_price": existing["last_price"] if existing else None,
@@ -134,10 +133,13 @@ def run():
                 sent_count += 1
                 continue
 
-            caption = format_caption(car, item["matched_trim"], item["price_info"], item["is_rental_suspect"])
+            caption = format_caption(car, item["matched_trim"], item["price_info"], item["accident_status"], item["is_rental_suspect"])
+
+            photos = fetch_photos(config.AUTO_DEV_API_KEY, car["vin"]) or car["photos"]
+
             try:
                 message_ids = telegram_bot.send_car_album(
-                    config.TELEGRAM_BOT_TOKEN, config.TELEGRAM_CHAT_ID, car["photos"], caption
+                    config.TELEGRAM_BOT_TOKEN, config.TELEGRAM_CHAT_ID, photos, caption
                 )
             except Exception as exc:
                 logger.error("Не удалось отправить машину VIN=%s: %s", car["vin"], exc)
