@@ -58,14 +58,14 @@ INTERESTING_TRIM_KEYWORDS = {
     "Land Rover": ["r-dynamic", "r dynamic", "hse", "autobiography"],
 }
 
-# Слова, которые намекают на прокатную/перекупную машину.
+# Слова в названии дилера, которые намекают на перекупа/оптовика.
 RENTAL_DEALER_KEYWORDS = [
     "auto group export", "wholesale", "auction", "export llc", "auto exporters",
     "rental", "fleet",
 ]
-RENTAL_DESCRIPTION_KEYWORDS = ["rental", "fleet vehicle", "corporate lease", "former rental"]
 
-# Порог для пометки "подозрительно дёшево" (возможна авария/salvage).
+# Порог для пометки "подозрительно дёшево" — используется только если
+# Auto.dev не прислал историю аварий напрямую (тогда это резервная догадка).
 PRICE_ANOMALY_MIN_DOLLARS = _env_int("PRICE_ANOMALY_MIN_DOLLARS", 3000)
 PRICE_ANOMALY_MIN_PERCENT = _env_int("PRICE_ANOMALY_MIN_PERCENT", 12)
 
@@ -75,3 +75,7 @@ SIMILAR_MILEAGE_DELTA = 25000
 
 # Пробег/год выше этого значения — повод заподозрить бывшую прокатную машину.
 RENTAL_MILEAGE_PER_YEAR = 18000
+
+# Столько владельцев и больше для не очень старой машины — тоже повод
+# заподозрить прокат/оптовую перепродажу (данные из history.ownerCount).
+RENTAL_OWNER_COUNT_THRESHOLD = _env_int("RENTAL_OWNER_COUNT_THRESHOLD", 3)
