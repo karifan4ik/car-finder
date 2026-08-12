@@ -1,16 +1,24 @@
 """Обращение к Auto.dev Vehicle Listings API.
 
-ВАЖНО: этот файл написан "защищённо" — он умеет читать данные машины
-из разных возможных вариантов названий полей в ответе API, потому что
-на момент написания кода не было доступа к живой документации из
-песочницы разработки. Сырой ответ первой страницы каждого прогона
-сохраняется в data/last_api_response.json — если какое-то поле у машины
-не заполняется (например, всегда пустой пробег), нужно заглянуть в этот
-файл и поправить одну функцию parse_listing() ниже.
+Параметры запроса (zip/distance/vehicle.make/vehicle.year/retailListing.price/
+retailListing.miles) взяты из официальной документации (docs.auto.dev).
+На случай, если какое-то название всё же окажется неверным (например,
+документация поменяется), запрос "самолечится": при ошибке 400 про
+неизвестный параметр он убирается и запрос повторяется (см.
+_extract_invalid_param/_remember_bad_param) — фильтрация по году/цене/
+пробегу всё равно дублируется на нашей стороне в search_cars().
+
+Названия полей в *ответе* API (структура data[].vehicle.*/retailListing.*)
+подтверждены документацией только частично (vin/year/make/price и общая
+форма ответа) — если какое-то поле у машины не заполняется (например,
+всегда пустое фото), сырой ответ первой страницы каждого прогона
+сохраняется в data/last_api_response.json — нужно заглянуть в этот файл
+и поправить одну функцию parse_listing() ниже.
 """
 import json
 import logging
 import re
+from datetime import date
 from typing import Any, Optional
 
 import requests
@@ -85,10 +93,17 @@ def fetch_raw_pages(api_key: str, max_pages: int = None) -> list:
 
     max_pages = max_pages or config.MAX_API_PAGES
     headers = {"Authorization": f"Bearer {api_key}"}
+
+    # Диапазоны года/цены/пробега — по документации Auto.dev задаются через
+    # тире (например vehicle.year=2019-2027), а не отдельными _min/_max.
+    # Верхнюю границу года берём с запасом на пару лет вперёд (в продаже уже
+    # бывают машины следующих модельных годов).
+    year_upper = date.today().year + 2
+
     optional_params = {
-        "year_min": config.SEARCH_YEAR_MIN,
-        "price_max": config.SEARCH_PRICE_MAX,
-        "mileage_max": config.SEARCH_MILEAGE_MAX,
+        "vehicle.year": f"{config.SEARCH_YEAR_MIN}-{year_upper}",
+        "retailListing.price": f"0-{config.SEARCH_PRICE_MAX}",
+        "retailListing.miles": f"0-{config.SEARCH_MILEAGE_MAX}",
     }
     bad_params = _load_bad_params()
 
@@ -96,8 +111,9 @@ def fetch_raw_pages(api_key: str, max_pages: int = None) -> list:
         p = {
             "zip": config.SEARCH_ZIP,
             "distance": config.SEARCH_DISTANCE,
-            "make": ",".join(config.SEARCH_MAKES),
+            "vehicle.make": ",".join(config.SEARCH_MAKES),
             "page": page,
+            "limit": 20,  # максимум на тарифе Starter — выше он всё равно обрежёт
         }
         for name, value in optional_params.items():
             if name not in bad_params:
@@ -146,13 +162,8 @@ def fetch_raw_pages(api_key: str, max_pages: int = None) -> list:
         all_items.extend(items)
 
         has_next = bool(_get_path(payload, "links.next")) if isinstance(payload, dict) else False
-        if not has_next and len(items) < 1:
-            break
         if not has_next:
-            # Нет явного признака следующей страницы — на всякий случай
-            # останавливаемся, если страница вернула мало записей.
-            if len(items) < 5:
-                break
+            break
 
     return all_items
 
@@ -173,7 +184,7 @@ def parse_listing(raw: dict) -> Optional[dict]:
     trim = _first(raw, ["vehicle.trim", "trim"]) or ""
 
     price = _first(raw, ["retailListing.price", "price", "listPrice"])
-    mileage = _first(raw, ["retailListing.mileage", "mileage", "odometer"])
+    mileage = _first(raw, ["retailListing.miles", "retailListing.mileage", "mileage", "miles", "odometer"])
 
     dealer_name = _first(raw, ["retailListing.dealerName", "retailListing.dealer.name", "dealerName", "dealer.name"]) or ""
     dealer_city = _first(raw, ["retailListing.dealerCity", "retailListing.dealer.city", "dealerCity", "dealer.city"]) or ""
