@@ -10,6 +10,7 @@
 """
 import json
 import logging
+import re
 from typing import Any, Optional
 
 import requests
@@ -20,9 +21,43 @@ logger = logging.getLogger("car_finder.auto_dev")
 
 BASE_URL = "https://api.auto.dev/listings"
 
+BAD_PARAMS_PATH = config.DATA_DIR / "auto_dev_bad_params.json"
+
 
 class AutoDevError(RuntimeError):
     pass
+
+
+def _load_bad_params() -> set:
+    """Названия параметров запроса, про которые Auto.dev уже сказал
+    "такого параметра нет" — чтобы больше их не отправлять и не тратить
+    впустую запросы к API.
+    """
+    if not BAD_PARAMS_PATH.exists():
+        return set()
+    try:
+        return set(json.loads(BAD_PARAMS_PATH.read_text()))
+    except (json.JSONDecodeError, OSError):
+        return set()
+
+
+def _remember_bad_param(name: str, bad_params: set):
+    bad_params.add(name)
+    try:
+        BAD_PARAMS_PATH.write_text(json.dumps(sorted(bad_params)))
+    except OSError:
+        pass
+
+
+def _extract_invalid_param(error_text: str, known_param_names) -> Optional[str]:
+    """Пытается вытащить название "неправильного" параметра из текста ошибки API."""
+    match = re.search(r"parameter[^:]*:\s*([A-Za-z0-9_]+)", error_text, re.IGNORECASE)
+    if match and match.group(1) in known_param_names:
+        return match.group(1)
+    for name in known_param_names:
+        if name in error_text:
+            return name
+    return None
 
 
 def _get_path(obj: dict, path: str) -> Optional[Any]:
@@ -50,24 +85,50 @@ def fetch_raw_pages(api_key: str, max_pages: int = None) -> list:
 
     max_pages = max_pages or config.MAX_API_PAGES
     headers = {"Authorization": f"Bearer {api_key}"}
-    params = {
-        "zip": config.SEARCH_ZIP,
-        "distance": config.SEARCH_DISTANCE,
-        "make": ",".join(config.SEARCH_MAKES),
+    optional_params = {
         "year_min": config.SEARCH_YEAR_MIN,
         "price_max": config.SEARCH_PRICE_MAX,
         "mileage_max": config.SEARCH_MILEAGE_MAX,
     }
+    bad_params = _load_bad_params()
+
+    def build_params(page: int) -> dict:
+        p = {
+            "zip": config.SEARCH_ZIP,
+            "distance": config.SEARCH_DISTANCE,
+            "make": ",".join(config.SEARCH_MAKES),
+            "page": page,
+        }
+        for name, value in optional_params.items():
+            if name not in bad_params:
+                p[name] = value
+        return p
 
     all_items = []
     first_page_saved = False
     for page in range(1, max_pages + 1):
-        params["page"] = page
-        resp = requests.get(BASE_URL, headers=headers, params=params, timeout=30)
-        if resp.status_code != 200:
+        # Год/цена/пробег дублируются нашим фильтром в search_cars(), поэтому
+        # если API не примет какой-то из этих параметров — просто перестаём
+        # его отправлять и пробуем снова, вместо того чтобы останавливать агента.
+        for attempt in range(len(optional_params) + 1):
+            params = build_params(page)
+            resp = requests.get(BASE_URL, headers=headers, params=params, timeout=30)
+            if resp.status_code == 200:
+                break
+            if resp.status_code == 400:
+                bad_name = _extract_invalid_param(resp.text, optional_params.keys())
+                if bad_name and bad_name not in bad_params:
+                    logger.warning(
+                        "Auto.dev не принимает параметр '%s' — убираю его и пробую снова.", bad_name
+                    )
+                    _remember_bad_param(bad_name, bad_params)
+                    continue
             raise AutoDevError(
                 f"Auto.dev API вернул ошибку {resp.status_code}: {resp.text[:500]}"
             )
+        else:
+            raise AutoDevError("Auto.dev API постоянно отклоняет параметры запроса.")
+
         payload = resp.json()
 
         if not first_page_saved:
