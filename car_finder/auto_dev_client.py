@@ -185,17 +185,21 @@ def parse_listing(raw: dict) -> Optional[dict]:
     year = _first(raw, ["vehicle.year"])
     make = _first(raw, ["vehicle.make"])
     model = _first(raw, ["vehicle.model"])
-    trim = _first(raw, ["vehicle.trim"]) or ""
+    # Некоторые поля Auto.dev иногда присылает не строкой (например, trim
+    # числом) — на всякий случай всегда приводим текстовые поля к str().
+    trim = str(_first(raw, ["vehicle.trim"]) or "")
+    make = str(make) if make is not None else None
+    model = str(model) if model is not None else None
 
     price = _first(raw, ["retailListing.price"])
     mileage = _first(raw, ["retailListing.miles"])
 
-    dealer_name = _first(raw, ["retailListing.dealer"]) or ""
-    dealer_city = _first(raw, ["retailListing.city"]) or ""
-    dealer_state = _first(raw, ["retailListing.state"]) or ""
+    dealer_name = str(_first(raw, ["retailListing.dealer"]) or "")
+    dealer_city = str(_first(raw, ["retailListing.city"]) or "")
+    dealer_state = str(_first(raw, ["retailListing.state"]) or "")
 
-    url = _first(raw, ["retailListing.vdp"]) or ""
-    carfax_url = _first(raw, ["retailListing.carfaxUrl"]) or ""
+    url = str(_first(raw, ["retailListing.vdp"]) or "")
+    carfax_url = str(_first(raw, ["retailListing.carfaxUrl"]) or "")
 
     primary_image = _first(raw, ["retailListing.primaryImage"])
     photos = [primary_image] if isinstance(primary_image, str) and primary_image else []
