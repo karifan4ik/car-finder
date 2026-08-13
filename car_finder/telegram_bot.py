@@ -39,7 +39,7 @@ def send_car_album(token: str, chat_id: str, photos: list, caption: str) -> list
     его и пробует снова, а не отменяет отправку машины целиком.
     Возвращает список id отправленных сообщений (для отслеживания реакций).
     """
-    photos = list(photos[:8])
+    photos = list(photos[:10])  # Telegram позволяет альбом максимум из 10 фото
 
     for _ in range(len(photos) + 1):
         if len(photos) == 0:

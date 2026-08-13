@@ -248,7 +248,7 @@ def parse_listing(raw: dict) -> Optional[dict]:
     }
 
 
-def fetch_photos(api_key: str, vin: str, limit: int = 8) -> list:
+def fetch_photos(api_key: str, vin: str, limit: int = 10) -> list:
     """Запрашивает несколько фото машины по VIN через отдельный Auto.dev
     Vehicle Photos API. Вызывается только для машин, которые реально
     отправляем в Telegram (не для всех найденных), чтобы не тратить лишние
