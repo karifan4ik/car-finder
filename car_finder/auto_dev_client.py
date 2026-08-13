@@ -301,5 +301,12 @@ def search_cars(api_key: str) -> list:
             continue
         if car["price"] > config.SEARCH_PRICE_MAX:
             continue
+        if config.DEALER_WHITELIST and not _dealer_in_whitelist(car["dealer_name"]):
+            continue
         cars.append(car)
     return cars
+
+
+def _dealer_in_whitelist(dealer_name: str) -> bool:
+    dealer_name = dealer_name.lower()
+    return any(allowed.lower() in dealer_name for allowed in config.DEALER_WHITELIST)
