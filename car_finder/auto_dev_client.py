@@ -53,7 +53,7 @@ def _load_bad_params() -> set:
 def _remember_bad_param(name: str, bad_params: set):
     bad_params.add(name)
     try:
-        BAD_PARAMS_PATH.write_text(json.dumps(sorted(bad_params)))
+        BAD_PARAMS_PATH.write_text(json.dumps(sorted(bad_params)), encoding="utf-8")
     except OSError:
         pass
 
@@ -151,10 +151,11 @@ def fetch_raw_pages(api_key: str, max_pages: int = None) -> list:
         if not first_page_saved:
             try:
                 (config.DATA_DIR / "last_api_response.json").write_text(
-                    json.dumps(payload, indent=2, ensure_ascii=False)
+                    json.dumps(payload, indent=2, ensure_ascii=False),
+                    encoding="utf-8",
                 )
-            except OSError:
-                pass
+            except (OSError, UnicodeError):
+                pass  # это только отладочный файл, из-за него не стоит падать
             first_page_saved = True
 
         items = payload.get("data") if isinstance(payload, dict) else payload
