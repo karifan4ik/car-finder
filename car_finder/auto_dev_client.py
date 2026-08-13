@@ -258,7 +258,17 @@ def fetch_photos(api_key: str, vin: str, limit: int = 8) -> list:
     if resp.status_code != 200:
         return []
 
-    photos = _first(resp.json(), ["data.retail"])
+    payload = resp.json()
+    try:
+        debug_dir = config.DATA_DIR / "photos_debug"
+        debug_dir.mkdir(exist_ok=True)
+        (debug_dir / f"{vin}.json").write_text(
+            json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
+    except OSError:
+        pass
+
+    photos = _first(payload, ["data.retail"])
     if not isinstance(photos, list):
         return []
     return [p for p in photos if isinstance(p, str)][:limit]

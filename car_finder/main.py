@@ -135,7 +135,9 @@ def run():
 
             caption = format_caption(car, item["matched_trim"], item["price_info"], item["accident_status"], item["is_rental_suspect"])
 
-            photos = fetch_photos(config.AUTO_DEV_API_KEY, car["vin"]) or car["photos"]
+            # Только реальные фото из галереи объявления по VIN. Если их нет —
+            # лучше отправить без фото вообще, чем стоковую картинку модели.
+            photos = fetch_photos(config.AUTO_DEV_API_KEY, car["vin"])
 
             try:
                 message_ids = telegram_bot.send_car_album(
