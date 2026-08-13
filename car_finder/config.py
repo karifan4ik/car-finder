@@ -48,6 +48,12 @@ SEARCH_YEAR_MIN = _env_int("SEARCH_YEAR_MIN", 2019)
 SEARCH_MILEAGE_MAX = _env_int("SEARCH_MILEAGE_MAX", 85000)
 SEARCH_PRICE_MAX = _env_int("SEARCH_PRICE_MAX", 50000)
 
+# Белый список дилеров (по названию, частичное совпадение, без учёта
+# регистра). Пусто = показывать машины от любых дилеров.
+# Пример в .env: DEALER_WHITELIST=Faulkner Dodge,AutoNation
+_dealer_whitelist_raw = os.getenv("DEALER_WHITELIST", "")
+DEALER_WHITELIST = [d.strip() for d in _dealer_whitelist_raw.split(",") if d.strip()]
+
 # --- Признаки "интересных" комплектаций по маркам ---
 # Ключевые слова ищем в trim, options и описании (без учёта регистра).
 INTERESTING_TRIM_KEYWORDS = {

@@ -53,7 +53,7 @@ def _load_bad_params() -> set:
 def _remember_bad_param(name: str, bad_params: set):
     bad_params.add(name)
     try:
-        BAD_PARAMS_PATH.write_text(json.dumps(sorted(bad_params)))
+        BAD_PARAMS_PATH.write_text(json.dumps(sorted(bad_params)), encoding="utf-8")
     except OSError:
         pass
 
@@ -151,10 +151,11 @@ def fetch_raw_pages(api_key: str, max_pages: int = None) -> list:
         if not first_page_saved:
             try:
                 (config.DATA_DIR / "last_api_response.json").write_text(
-                    json.dumps(payload, indent=2, ensure_ascii=False)
+                    json.dumps(payload, indent=2, ensure_ascii=False),
+                    encoding="utf-8",
                 )
-            except OSError:
-                pass
+            except (OSError, UnicodeError):
+                pass  # это только отладочный файл, из-за него не стоит падать
             first_page_saved = True
 
         items = payload.get("data") if isinstance(payload, dict) else payload
@@ -184,17 +185,26 @@ def parse_listing(raw: dict) -> Optional[dict]:
     year = _first(raw, ["vehicle.year"])
     make = _first(raw, ["vehicle.make"])
     model = _first(raw, ["vehicle.model"])
-    trim = _first(raw, ["vehicle.trim"]) or ""
+    # Некоторые поля Auto.dev иногда присылает не строкой (например, trim
+    # числом) — на всякий случай всегда приводим текстовые поля к str().
+    trim = str(_first(raw, ["vehicle.trim"]) or "")
+    make = str(make) if make is not None else None
+    model = str(model) if model is not None else None
+
+    exterior_color = str(_first(raw, ["vehicle.exteriorColor"]) or "")
+    interior_color = str(_first(raw, ["vehicle.interiorColor"]) or "")
+    engine = str(_first(raw, ["vehicle.engine"]) or "")
+    drivetrain = str(_first(raw, ["vehicle.drivetrain"]) or "")
 
     price = _first(raw, ["retailListing.price"])
     mileage = _first(raw, ["retailListing.miles"])
 
-    dealer_name = _first(raw, ["retailListing.dealer"]) or ""
-    dealer_city = _first(raw, ["retailListing.city"]) or ""
-    dealer_state = _first(raw, ["retailListing.state"]) or ""
+    dealer_name = str(_first(raw, ["retailListing.dealer"]) or "")
+    dealer_city = str(_first(raw, ["retailListing.city"]) or "")
+    dealer_state = str(_first(raw, ["retailListing.state"]) or "")
 
-    url = _first(raw, ["retailListing.vdp"]) or ""
-    carfax_url = _first(raw, ["retailListing.carfaxUrl"]) or ""
+    url = str(_first(raw, ["retailListing.vdp"]) or "")
+    carfax_url = str(_first(raw, ["retailListing.carfaxUrl"]) or "")
 
     primary_image = _first(raw, ["retailListing.primaryImage"])
     photos = [primary_image] if isinstance(primary_image, str) and primary_image else []
@@ -219,6 +229,10 @@ def parse_listing(raw: dict) -> Optional[dict]:
         "make": make,
         "model": model,
         "trim": trim,
+        "exterior_color": exterior_color,
+        "interior_color": interior_color,
+        "engine": engine,
+        "drivetrain": drivetrain,
         "price": price,
         "mileage": mileage,
         "dealer_name": dealer_name,
@@ -234,7 +248,7 @@ def parse_listing(raw: dict) -> Optional[dict]:
     }
 
 
-def fetch_photos(api_key: str, vin: str, limit: int = 8) -> list:
+def fetch_photos(api_key: str, vin: str, limit: int = 10) -> list:
     """Запрашивает несколько фото машины по VIN через отдельный Auto.dev
     Vehicle Photos API. Вызывается только для машин, которые реально
     отправляем в Telegram (не для всех найденных), чтобы не тратить лишние
@@ -253,7 +267,17 @@ def fetch_photos(api_key: str, vin: str, limit: int = 8) -> list:
     if resp.status_code != 200:
         return []
 
-    photos = _first(resp.json(), ["data.retail"])
+    payload = resp.json()
+    try:
+        debug_dir = config.DATA_DIR / "photos_debug"
+        debug_dir.mkdir(exist_ok=True)
+        (debug_dir / f"{vin}.json").write_text(
+            json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
+    except OSError:
+        pass
+
+    photos = _first(payload, ["data.retail"])
     if not isinstance(photos, list):
         return []
     return [p for p in photos if isinstance(p, str)][:limit]
@@ -277,5 +301,12 @@ def search_cars(api_key: str) -> list:
             continue
         if car["price"] > config.SEARCH_PRICE_MAX:
             continue
+        if config.DEALER_WHITELIST and not _dealer_in_whitelist(car["dealer_name"]):
+            continue
         cars.append(car)
     return cars
+
+
+def _dealer_in_whitelist(dealer_name: str) -> bool:
+    dealer_name = dealer_name.lower()
+    return any(allowed.lower() in dealer_name for allowed in config.DEALER_WHITELIST)

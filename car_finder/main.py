@@ -22,6 +22,17 @@ def format_caption(car: dict, matched_trim, price_info: dict, accident_status: s
     lines.append(f"Цена: ${car['price']:,}")
     lines.append(f"Пробег: {car['mileage']:,} миль")
 
+    if car["trim"]:
+        lines.append(f"Комплектация: {car['trim']}")
+    if car["engine"]:
+        lines.append(f"Двигатель: {car['engine']}")
+    if car["drivetrain"]:
+        lines.append(f"Привод: {car['drivetrain']}")
+    if car["exterior_color"]:
+        lines.append(f"Цвет снаружи: {car['exterior_color']}")
+    if car["interior_color"]:
+        lines.append(f"Цвет внутри: {car['interior_color']}")
+
     dealer_line = car["dealer_name"] or "Дилер не указан"
     if car["dealer_city"]:
         dealer_line += f", {car['dealer_city']}"
@@ -135,7 +146,9 @@ def run():
 
             caption = format_caption(car, item["matched_trim"], item["price_info"], item["accident_status"], item["is_rental_suspect"])
 
-            photos = fetch_photos(config.AUTO_DEV_API_KEY, car["vin"]) or car["photos"]
+            # Только реальные фото из галереи объявления по VIN. Если их нет —
+            # лучше отправить без фото вообще, чем стоковую картинку модели.
+            photos = fetch_photos(config.AUTO_DEV_API_KEY, car["vin"])
 
             try:
                 message_ids = telegram_bot.send_car_album(
