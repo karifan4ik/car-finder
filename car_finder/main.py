@@ -22,6 +22,17 @@ def format_caption(car: dict, matched_trim, price_info: dict, accident_status: s
     lines.append(f"Цена: ${car['price']:,}")
     lines.append(f"Пробег: {car['mileage']:,} миль")
 
+    if car["trim"]:
+        lines.append(f"Комплектация: {car['trim']}")
+    if car["engine"]:
+        lines.append(f"Двигатель: {car['engine']}")
+    if car["drivetrain"]:
+        lines.append(f"Привод: {car['drivetrain']}")
+    if car["exterior_color"]:
+        lines.append(f"Цвет снаружи: {car['exterior_color']}")
+    if car["interior_color"]:
+        lines.append(f"Цвет внутри: {car['interior_color']}")
+
     dealer_line = car["dealer_name"] or "Дилер не указан"
     if car["dealer_city"]:
         dealer_line += f", {car['dealer_city']}"

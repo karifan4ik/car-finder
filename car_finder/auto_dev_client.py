@@ -191,6 +191,11 @@ def parse_listing(raw: dict) -> Optional[dict]:
     make = str(make) if make is not None else None
     model = str(model) if model is not None else None
 
+    exterior_color = str(_first(raw, ["vehicle.exteriorColor"]) or "")
+    interior_color = str(_first(raw, ["vehicle.interiorColor"]) or "")
+    engine = str(_first(raw, ["vehicle.engine"]) or "")
+    drivetrain = str(_first(raw, ["vehicle.drivetrain"]) or "")
+
     price = _first(raw, ["retailListing.price"])
     mileage = _first(raw, ["retailListing.miles"])
 
@@ -224,6 +229,10 @@ def parse_listing(raw: dict) -> Optional[dict]:
         "make": make,
         "model": model,
         "trim": trim,
+        "exterior_color": exterior_color,
+        "interior_color": interior_color,
+        "engine": engine,
+        "drivetrain": drivetrain,
         "price": price,
         "mileage": mileage,
         "dealer_name": dealer_name,
